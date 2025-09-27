@@ -1,0 +1,342 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title>세션 정책 관리</title>
+  <style>
+    body { font-family: Arial, sans-serif; margin: 32px; color: #222; }
+    h1 { margin-bottom: 16px; }
+    h2 { margin-top: 32px; margin-bottom: 12px; }
+    table { border-collapse: collapse; width: 100%; margin-top: 12px; }
+    th, td { border: 1px solid #ddd; padding: 8px; vertical-align: top; }
+    th { background: #f4f4f4; text-align: left; }
+    .form-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 12px; }
+    .card { border: 1px solid #ddd; border-radius: 8px; padding: 16px; margin-top: 12px; }
+    .card.info { background: #f8f9ff; }
+    .card.success { background: #f1fff1; border-color: #6ac46a; }
+    .card.error { background: #fff2f2; border-color: #e25b5b; }
+    label { display: flex; flex-direction: column; font-size: 0.9rem; gap: 4px; }
+    input[type="text"], input[type="time"], input[type="number"], input[type="date"], select, textarea {
+      padding: 6px 8px; border: 1px solid #bbb; border-radius: 4px;
+    }
+    textarea { min-height: 70px; resize: vertical; }
+    button { padding: 8px 16px; border: none; border-radius: 4px; background: #2f6fed; color: #fff; cursor: pointer; }
+    button.secondary { background: #555; }
+    button:hover { opacity: 0.9; }
+    .inline { display: flex; gap: 12px; align-items: center; }
+    .badge { display: inline-block; padding: 2px 6px; border-radius: 4px; background: #eee; margin-right: 6px; font-size: 0.85rem; }
+    .badge.deny { background: #ffe6e6; color: #c12727; }
+    .badge.allow { background: #e6f7e6; color: #2f8f2f; }
+    .small { font-size: 0.8rem; color: #666; }
+    pre { background: #f7f7f7; padding: 8px; border-radius: 6px; overflow: auto; }
+  </style>
+  <script>
+    function toggleConditionFields() {
+      const typeSelect = document.getElementById('conditionType');
+      if (!typeSelect) return;
+      const selected = typeSelect.value;
+      const timeFields = document.getElementById('timeWindowFields');
+      const ipFields = document.getElementById('ipRangeFields');
+      const locationFields = document.getElementById('locationFields');
+      timeFields.style.display = selected === 'TIME_WINDOW' ? 'grid' : 'none';
+      ipFields.style.display = selected === 'IP_RANGE' ? 'block' : 'none';
+      locationFields.style.display = selected === 'LOCATION' ? 'block' : 'none';
+    }
+    document.addEventListener('DOMContentLoaded', toggleConditionFields);
+  </script>
+</head>
+<body>
+<h1>세션 정책 관리 &amp; 테스트</h1>
+
+<div th:if="${errorMessage}" class="card error" th:text="${errorMessage}"></div>
+<div th:if="${successMessage}" class="card success" th:text="${successMessage}"></div>
+
+<section>
+  <h2>현재 등록된 정책</h2>
+  <div class="card info">
+    <p class="small">우선순위가 높을수록 먼저 평가합니다. 테넌트 범위는 필수이며, 그룹/사용자는 선택적입니다.</p>
+  </div>
+  <table>
+    <thead>
+    <tr>
+      <th>ID</th>
+      <th>정책명</th>
+      <th>효과</th>
+      <th>우선순위</th>
+      <th>활성</th>
+      <th>테넌트</th>
+      <th>그룹</th>
+      <th>사용자</th>
+      <th>조건 타입</th>
+      <th>조건 값(JSON)</th>
+      <th>동작</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:if="${policies.empty}">
+      <td colspan="10">등록된 정책이 없습니다.</td>
+    </tr>
+    <tr th:each="policy : ${policies}">
+      <td th:text="${policy.id()}"></td>
+      <td th:text="${policy.name()}"></td>
+      <td>
+        <span class="badge" th:classappend="${policy.effect().name() == 'DENY'} ? ' deny' : ' allow'"
+              th:text="${policy.effect().name()}"></span>
+      </td>
+      <td th:text="${policy.priority()}"></td>
+      <td th:text="${policy.active() ? '예' : '아니오'}"></td>
+      <td>
+        <span th:each="t : ${policy.tenantIds()}" class="badge" th:text="${t}"></span>
+      </td>
+      <td>
+        <span th:each="g : ${policy.groupIds()}" class="badge" th:text="${g}"></span>
+      </td>
+      <td>
+        <span th:each="u : ${policy.userIds()}" class="badge" th:text="${u}"></span>
+      </td>
+      <td th:text="${policy.conditionType().name()}"></td>
+      <td><pre th:text="${policy.conditionValue()}"></pre></td>
+      <td>
+        <form th:action="@{/admin/policies/{id}/toggle(id=${policy.id()})}" method="post" style="display:inline-block;margin-right:6px;">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <button type="submit" class="secondary" th:text="${policy.active() ? '비활성화' : '활성화'}"></button>
+        </form>
+        <form th:action="@{/admin/policies/{id}/delete(id=${policy.id()})}" method="post" style="display:inline-block;"
+              onsubmit="return confirm('정말로 삭제하시겠습니까?');">
+          <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+          <button type="submit" class="secondary">삭제</button>
+        </form>
+      </td>
+    </tr>
+    </tbody>
+  </table>
+</section>
+
+<section>
+  <h2>정책 생성</h2>
+  <form th:action="@{/admin/policies}" th:object="${policyForm}" method="post" class="card">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <div class="form-grid">
+      <label>정책 이름
+        <input type="text" th:field="*{name}" placeholder="예: tenant1 business allow" required />
+      </label>
+      <label>테넌트 ID
+        <input type="text" th:field="*{tenantId}" placeholder="tenant1" required />
+      </label>
+      <label>조건 유형
+        <select id="conditionType" th:field="*{conditionType}" onchange="toggleConditionFields()" required>
+          <option value="">유형 선택</option>
+          <option th:each="type : ${conditionTypes}" th:value="${type}" th:text="${type}"></option>
+        </select>
+      </label>
+      <label>효과 (ALLOW/DENY)
+        <select th:field="*{effect}" required>
+          <option value="">선택</option>
+          <option th:each="effect : ${effects}" th:value="${effect}" th:text="${effect}"></option>
+        </select>
+      </label>
+      <label>우선순위
+        <input type="number" th:field="*{priority}" min="1" placeholder="100" />
+        <span class="small">값이 높을수록 먼저 평가됩니다.</span>
+      </label>
+      <label>활성 여부
+        <input type="checkbox" th:field="*{active}" />
+      </label>
+    </div>
+
+    <div id="timeWindowFields" class="form-grid" style="display:none; margin-top:12px;">
+      <label>시작 시간
+        <input type="time" th:field="*{timeStart}" />
+      </label>
+      <label>종료 시간
+        <input type="time" th:field="*{timeEnd}" />
+      </label>
+      <label>타임존
+        <input type="text" th:field="*{timeZoneId}" placeholder="Asia/Seoul" />
+        <span class="small">미입력 시 시스템 타임존(예: <span th:text="${zoneId}"></span>) 사용</span>
+      </label>
+    </div>
+
+    <div id="ipRangeFields" style="display:none; margin-top:12px;">
+      <label>허용/차단 IP 대역 (CIDR, 쉼표 또는 줄바꿈 구분)
+        <textarea th:field="*{ipCidrs}" placeholder="10.0.0.0/8,192.168.0.0/16"></textarea>
+      </label>
+    </div>
+
+    <div id="locationFields" style="display:none; margin-top:12px;">
+      <label>국가 코드 (ISO-3166, 쉼표 또는 줄바꿈 구분)
+        <textarea th:field="*{countries}" placeholder="KR,US"></textarea>
+      </label>
+    </div>
+
+    <div class="form-grid" style="margin-top:12px;">
+      <label>대상 그룹 ID (쉼표 구분)
+        <input type="text" th:field="*{groupIds}" placeholder="engineering,finance" />
+      </label>
+      <label>대상 사용자 ID (쉼표 구분)
+        <input type="text" th:field="*{userIds}" placeholder="alice,bob" />
+      </label>
+    </div>
+
+    <div style="margin-top:16px;">
+      <button type="submit">정책 생성</button>
+    </div>
+  </form>
+</section>
+
+<section>
+  <h2>정책 평가 &amp; 세션 시뮬레이션</h2>
+  <div class="card info">
+    <p class="small">평가 폼은 바로 아래 세션 컨텍스트 폼과 동일한 값을 사용합니다. 세션 컨텍스트를 먼저 저장한 뒤 실제 API를 호출하면 필터 동작을 확인할 수 있습니다.</p>
+  </div>
+
+  <div th:if="${testOutcome}" class="card success">
+    <p th:text="|평가 결과: ${testOutcome.verdict()} ${testOutcome.effectLabel()}|"></p>
+    <p th:if="${testOutcome.result().policyId() != null}"
+       th:text="|적용된 정책 ID: ${testOutcome.result().policyId()}|"></p>
+    <p class="small">평가 시각: <span th:text="${testOutcome.context().requestDateTime()}"/></p>
+  </div>
+
+  <form th:action="@{/admin/policies/evaluate}" th:object="${testForm}" method="post" class="card">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <div class="form-grid">
+      <label>테넌트 ID
+        <input type="text" th:field="*{tenantId}" placeholder="tenant1" required />
+      </label>
+      <label>사용자 ID
+        <input type="text" th:field="*{userId}" placeholder="사용자 ID" />
+      </label>
+      <label>그룹 ID (쉼표 구분)
+        <input type="text" th:field="*{groupIds}" placeholder="engineering,finance" />
+      </label>
+      <label>클라이언트 IP
+        <input type="text" th:field="*{clientIp}" placeholder="198.51.100.10" />
+      </label>
+      <label>국가 코드
+        <input type="text" th:field="*{countryCode}" placeholder="KR" />
+      </label>
+      <label>평가 날짜
+        <input type="date" th:field="*{date}" />
+      </label>
+      <label>평가 시간
+        <input type="time" th:field="*{time}" />
+      </label>
+      <label>타임존
+        <input type="text" th:field="*{zoneId}" placeholder="Asia/Seoul" />
+      </label>
+    </div>
+    <div style="margin-top:16px;">
+      <button type="submit">정책 평가 실행</button>
+    </div>
+  </form>
+
+  <form th:action="@{/admin/policies/session}" th:object="${testForm}" method="post" class="card">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <h3>세션 컨텍스트 저장</h3>
+    <p class="small">입력된 값이 HTTP 세션에 저장되며, 이후 요청 시 `SessionPolicyFilter`가 이를 사용합니다.</p>
+    <div class="form-grid">
+      <label>테넌트 ID
+        <input type="text" th:field="*{tenantId}" placeholder="tenant1" />
+      </label>
+      <label>사용자 ID
+        <input type="text" th:field="*{userId}" placeholder="사용자 ID" />
+      </label>
+      <label>그룹 ID (쉼표 구분)
+        <input type="text" th:field="*{groupIds}" placeholder="engineering,finance" />
+      </label>
+      <label>국가 코드
+        <input type="text" th:field="*{countryCode}" placeholder="KR" />
+      </label>
+      <label>클라이언트 IP (필터에서 우선 사용)
+        <input type="text" th:field="*{clientIp}" placeholder="203.0.113.20" />
+      </label>
+    </div>
+    <div class="inline" style="margin-top:16px;">
+      <button type="submit">세션 저장</button>
+      <span class="small">세션 저장 후 <code>/</code> 엔드포인트를 호출하면 정책 필터가 적용된 요청을 확인할 수 있습니다.</span>
+    </div>
+  </form>
+</section>
+
+<section>
+  <h2>사용자 보안 레벨 및 행동 이벤트</h2>
+  <div class="card" th:if="${securityLevelState != null}">
+    <p>
+      현재 보안 레벨:
+      <strong th:text="${securityLevelState.level()}"></strong>
+      <span class="small" th:text="|만료 시각: ${securityLevelState.expiresAt()}|"></span>
+    </p>
+    <p class="small" th:text="|현재 위험 점수: ${securityLevelState.score()}|"></p>
+  </div>
+  <div class="card info" th:if="${securityLevelState == null}">
+    <p class="small">테넌트와 사용자 정보를 입력하면 보안 레벨이 표시됩니다.</p>
+  </div>
+
+  <div class="card" th:if="${securityEvents}">
+    <h3>최근 행동 이벤트</h3>
+    <table>
+      <thead>
+      <tr>
+        <th>발생 시각</th>
+        <th>행동 유형</th>
+        <th>세부 내용</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:if="${securityEvents.isEmpty()}">
+        <td colspan="3">최근 이벤트가 없습니다.</td>
+      </tr>
+      <tr th:each="event : ${securityEvents}">
+        <td th:text="${event.timestamp()}"></td>
+        <td th:text="${event.actionType()}"></td>
+        <td th:text="${event.actionDetail()}"></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <form th:action="@{/admin/policies/security-level/events}" th:object="${securityActionForm}" method="post" class="card">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <div class="form-grid">
+      <label>테넌트 ID
+        <input type="text" th:field="*{tenantId}" placeholder="tenant1" required />
+      </label>
+      <label>사용자 ID
+        <input type="text" th:field="*{userId}" placeholder="사용자 ID" required />
+      </label>
+      <label>행동 유형
+        <select th:field="*{actionType}">
+          <option value="">선택</option>
+          <option value="LOGIN_FAILURE">LOGIN_FAILURE</option>
+          <option value="PASSWORD_RESET">PASSWORD_RESET</option>
+          <option value="SUSPICIOUS_IP">SUSPICIOUS_IP</option>
+          <option value="DEVICE_CHANGE">DEVICE_CHANGE</option>
+          <option value="UNKNOWN">UNKNOWN</option>
+        </select>
+      </label>
+      <label>세부 내용
+        <input type="text" th:field="*{detail}" placeholder="예: 3회 연속 실패" />
+      </label>
+    </div>
+    <div style="margin-top:16px;">
+      <button type="submit">행동 이벤트 기록</button>
+    </div>
+  </form>
+</section>
+
+<section>
+  <h2>현재 세션 상태</h2>
+  <div class="card">
+    <table>
+      <tbody>
+      <tr th:each="entry : ${sessionAttributes.entrySet()}">
+        <th th:text="${entry.key}"></th>
+        <td th:text="${entry.value}"></td>
+      </tr>
+      </tbody>
+    </table>
+  </div>
+</section>
+
+</body>
+</html>

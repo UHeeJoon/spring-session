@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="ko" xmlns:th="http://www.thymeleaf.org">
+<head>
+  <meta charset="UTF-8" />
+  <title>대시보드</title>
+  <style>
+    body { font-family: 'Noto Sans KR', sans-serif; margin: 0; background: #f3f4f8; color: #1f2933; }
+    header { background: #111827; color: #fff; padding: 16px 32px; display: flex; justify-content: space-between; align-items: center; }
+    header h1 { margin: 0; font-size: 1.4rem; }
+    main { max-width: 960px; margin: 32px auto; padding: 0 20px; }
+    .card { background: #fff; border-radius: 12px; padding: 24px; box-shadow: 0 6px 18px rgba(15,23,42,0.08); margin-bottom: 24px; }
+    .card h2 { margin-top: 0; font-size: 1.2rem; }
+    table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+    th, td { padding: 10px 12px; border-bottom: 1px solid #e5e7eb; text-align: left; }
+    th { background: #f9fafb; font-weight: 600; }
+    .badge { display: inline-block; background: #e0e7ff; color: #3730a3; padding: 4px 10px; border-radius: 999px; margin-right: 6px; font-size: 0.85rem; }
+    form.logout { margin: 0; }
+    form.logout button { background: #ef4444; border: none; color: #fff; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-weight: 600; }
+    form.logout button:hover { opacity: 0.9; }
+    .session-table td { font-size: 0.9rem; color: #374151; }
+  </style>
+</head>
+<body>
+<header>
+  <div>
+    <h1>보안 정책 대시보드</h1>
+    <div th:if="${username != null}">
+      <span th:text="${username}"></span>
+      (<span th:text="${tenantId}"></span>)
+    </div>
+  </div>
+  <form class="logout" th:action="@{/logout}" method="post">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <button type="submit">로그아웃</button>
+  </form>
+</header>
+<main>
+  <section class="card">
+    <h2>세션 컨텍스트</h2>
+    <p>현재 로그인한 사용자와 세션 정책 필터가 참조하는 속성을 확인하세요.</p>
+    <table class="session-table">
+      <tbody>
+      <tr>
+        <th>사용자</th>
+        <td th:text="${username}">-</td>
+      </tr>
+      <tr>
+        <th>테넌트</th>
+        <td th:text="${tenantId}">-</td>
+      </tr>
+      <tr>
+        <th>국가</th>
+        <td th:text="${countryCode}">-</td>
+      </tr>
+      <tr>
+        <th>그룹</th>
+        <td>
+          <span th:each="group : ${groups}" th:text="${group}" class="badge">engineering</span>
+        </td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>세션 저장된 속성</h2>
+    <p>정책 필터, 보안 레벨 계산 등에 의해 부여된 세션 속성을 표시합니다.</p>
+    <table>
+      <thead>
+      <tr>
+        <th>키</th>
+        <th>값</th>
+      </tr>
+      </thead>
+      <tbody>
+      <tr th:each="entry : ${sessionAttributes.entrySet()}">
+        <td th:text="${entry.key}"></td>
+        <td th:text="${entry.value}"></td>
+      </tr>
+      </tbody>
+    </table>
+  </section>
+
+  <section class="card">
+    <h2>정책 관리로 이동</h2>
+    <p>세션 정책 생성, 평가, 보안 레벨 테스트는 아래 버튼을 통해 이동합니다.</p>
+    <a href="/admin/policies" style="display:inline-block;padding:10px 18px;background:#2563eb;color:#fff;border-radius:6px;text-decoration:none;font-weight:600;">정책 관리 화면</a>
+  </section>
+</main>
+</body>
+</html>

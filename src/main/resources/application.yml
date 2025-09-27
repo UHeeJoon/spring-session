@@ -1,0 +1,58 @@
+spring:
+  application:
+    name: security
+  datasource:
+    url: jdbc:mysql://localhost:3306/session_test
+    driver-class-name: com.mysql.cj.jdbc.Driver
+    username: root
+    password: root
+    hikari:
+      maximum-pool-size: 10
+      connection-timeout: 30000
+      idle-timeout: 600000
+      max-lifetime: 1800000
+  sql:
+    init:
+      mode: always
+  threads:
+    virtual:
+      enabled: true
+  session:
+    redis:
+      repository-type: indexed
+      namespace: octatco:sso
+
+  jpa:
+    defer-datasource-initialization: true
+    hibernate:
+      ddl-auto: create-drop
+    properties:
+      hibernate:
+        format_sql: true
+        dialect: org.hibernate.dialect.MySQLDialect
+        show_sql: true
+  data:
+    redis:
+      host: localhost
+      port: 6379
+
+server:
+  port: 8080
+
+security:
+  level:
+    retention-events: 20
+    retention-window: PT6H
+    policies:
+      LOGIN_FAILURE:
+        level: MEDIUM
+        ttl: PT30M
+      PASSWORD_RESET:
+        level: HIGH
+        ttl: PT1H
+      SUSPICIOUS_IP:
+        level: HIGH
+        ttl: PT2H
+      DEVICE_CHANGE:
+        level: MEDIUM
+        ttl: PT45M
