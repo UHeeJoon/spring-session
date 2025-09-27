@@ -1,6 +1,7 @@
 package multitenant.security.policy.admin;
 
 import static org.assertj.core.api.Assertions.assertThat;
+import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import java.util.List;
 import multitenant.security.policy.domain.PolicyConditionType;
@@ -61,6 +62,24 @@ class PolicyAdminServiceTests {
                 .anyMatch(scope -> "tenant3".equals(scope.getScopeValue())))
             .toList();
     assertThat(tenantPolicies).isNotEmpty();
+  }
+
+  @Test
+  void rejectsWhenIncludeAndExcludeGroupsOverlap() {
+    PolicyCreationForm form = new PolicyCreationForm();
+    form.setName("overlap policy");
+    form.setTenantId("tenant4");
+    form.setConditionType(PolicyConditionType.TIME_WINDOW);
+    form.setEffect(PolicyEffect.ALLOW);
+    form.setTimeStart("09:00");
+    form.setTimeEnd("18:00");
+    form.setTimeZoneId("Asia/Seoul");
+    form.setGroupIds("engineering");
+    form.setExcludedGroupIds("engineering");
+
+    assertThatThrownBy(() -> policyAdminService.createPolicy(form))
+        .isInstanceOf(IllegalArgumentException.class)
+        .hasMessageContaining("겹칠 수 없습니다");
   }
 
   @Test

@@ -6,18 +6,26 @@ import jakarta.servlet.http.HttpServletRequest;
 import jakarta.servlet.http.HttpServletResponse;
 import jakarta.servlet.http.HttpSession;
 import java.io.IOException;
+import java.time.Clock;
+import java.time.Instant;
 import java.time.ZonedDateTime;
 import java.util.Arrays;
 import java.util.Collection;
+import java.util.Comparator;
 import java.util.LinkedHashSet;
 import java.util.Locale;
+import java.util.Map;
 import java.util.Set;
 import java.util.stream.Collectors;
 import multitenant.security.policy.service.PolicyEvaluationContext;
 import multitenant.security.policy.service.PolicyEvaluationResult;
 import multitenant.security.policy.service.SessionPolicyService;
+import multitenant.security.sessionlimit.service.SessionLimitSettings;
+import multitenant.security.sessionlimit.service.TenantSessionLimitService;
 import multitenant.security.securitylevel.SecurityLevel;
 import multitenant.security.securitylevel.service.SecurityLevelService;
+import org.springframework.session.FindByIndexNameSessionRepository;
+import org.springframework.session.Session;
 import org.springframework.http.HttpMethod;
 import org.springframework.security.access.AccessDeniedException;
 import org.springframework.stereotype.Component;
@@ -32,11 +40,20 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
 
   private final SessionPolicyService sessionPolicyService;
   private final SecurityLevelService securityLevelService;
+  private final TenantSessionLimitService tenantSessionLimitService;
+  private final FindByIndexNameSessionRepository<? extends Session> sessionRepository;
+  private final Clock clock;
 
   public SessionPolicyFilter(SessionPolicyService sessionPolicyService,
-      SecurityLevelService securityLevelService) {
+      SecurityLevelService securityLevelService,
+      TenantSessionLimitService tenantSessionLimitService,
+      FindByIndexNameSessionRepository<? extends Session> sessionRepository,
+      Clock clock) {
     this.sessionPolicyService = sessionPolicyService;
     this.securityLevelService = securityLevelService;
+    this.tenantSessionLimitService = tenantSessionLimitService;
+    this.sessionRepository = sessionRepository;
+    this.clock = clock;
   }
 
   @Override
@@ -49,6 +66,7 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
       session.setAttribute(SESSION_POLICY_ID_ATTR, result.policyId());
       session.setAttribute(SESSION_POLICY_EFFECT_ATTR, result.effect());
       applySecurityLevel(session, context);
+      applySessionLimits(session, context);
       if (!result.allowed()) {
         throw new AccessDeniedException("Access blocked by session policy");
       }
@@ -97,6 +115,70 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
     session.setAttribute(SESSION_SECURITY_LEVEL_ATTR, level);
     if (level == SecurityLevel.HIGH) {
       throw new AccessDeniedException("Access blocked due to high security risk level");
+    }
+  }
+
+  private void applySessionLimits(HttpSession session, PolicyEvaluationContext context) {
+    if (context.tenantId() == null || context.tenantId().isBlank()) {
+      return;
+    }
+    String tenantId = context.tenantId().trim();
+    SessionLimitSettings settings = tenantSessionLimitService.resolveForTenant(tenantId);
+
+    if (settings.maxIdle().isZero()) {
+      session.setMaxInactiveInterval(-1);
+    } else if (settings.hasIdleLimit()) {
+      long idleSeconds = Math.min(Integer.MAX_VALUE, Math.max(1, settings.maxIdle().getSeconds()));
+      session.setMaxInactiveInterval((int) idleSeconds);
+    }
+
+    if (settings.hasDurationLimit()) {
+      Instant created = Instant.ofEpochMilli(session.getCreationTime());
+      Instant expiration = created.plus(settings.maxDuration());
+      if (clock.instant().isAfter(expiration)) {
+        session.invalidate();
+        throw new AccessDeniedException("Session exceeded maximum lifetime");
+      }
+    }
+
+    if (!settings.hasMaxSessionsLimit()) {
+      return;
+    }
+
+    session.setAttribute(TenantSessionLimitService.SESSION_INDEX_KEY_ATTRIBUTE, tenantId);
+    Map<String, ? extends Session> indexedSessions = sessionRepository
+        .findByIndexNameAndIndexValue(TenantSessionLimitService.SESSION_INDEX_KEY_ATTRIBUTE,
+            tenantId);
+
+    if (indexedSessions == null) {
+      return;
+    }
+
+    boolean currentRegistered = indexedSessions.containsKey(session.getId());
+    int expectedSize = indexedSessions.size() + (currentRegistered ? 0 : 1);
+    if (expectedSize <= settings.maxSessions()) {
+      return;
+    }
+
+    int sessionsToRemove = expectedSize - settings.maxSessions();
+    var orderedSessions = indexedSessions.entrySet().stream()
+        .sorted(Comparator.comparing(entry -> entry.getValue().getLastAccessedTime()))
+        .toList();
+    for (var entry : orderedSessions) {
+      String sessionId = entry.getKey();
+      if (sessionId.equals(session.getId())) {
+        continue;
+      }
+      sessionRepository.deleteById(sessionId);
+      sessionsToRemove--;
+      if (sessionsToRemove <= 0) {
+        break;
+      }
+    }
+
+    if (sessionsToRemove > 0) {
+      session.invalidate();
+      throw new AccessDeniedException("Maximum session count exceeded");
     }
   }
 

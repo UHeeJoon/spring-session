@@ -59,19 +59,21 @@ public class PolicyAdminService {
     tenantScope.setScopeValue(form.getTenantId().trim());
     policy.addScope(tenantScope);
 
-    parseTokenSet(form.getGroupIds()).forEach(groupId -> {
-      SessionPolicyScope groupScope = new SessionPolicyScope();
-      groupScope.setScopeType(PolicyScopeType.GROUP);
-      groupScope.setScopeValue(groupId);
-      policy.addScope(groupScope);
-    });
+    Set<String> groupIds = parseTokenSet(form.getGroupIds());
+    Set<String> excludedGroupIds = parseTokenSet(form.getExcludedGroupIds());
+    ensureDisjoint(groupIds, excludedGroupIds, "그룹 ID");
 
-    parseTokenSet(form.getUserIds()).forEach(userId -> {
-      SessionPolicyScope userScope = new SessionPolicyScope();
-      userScope.setScopeType(PolicyScopeType.USER);
-      userScope.setScopeValue(userId);
-      policy.addScope(userScope);
-    });
+    groupIds.forEach(groupId -> policy.addScope(buildScope(PolicyScopeType.GROUP, groupId, false)));
+    excludedGroupIds
+        .forEach(groupId -> policy.addScope(buildScope(PolicyScopeType.GROUP, groupId, true)));
+
+    Set<String> userIds = parseTokenSet(form.getUserIds());
+    Set<String> excludedUserIds = parseTokenSet(form.getExcludedUserIds());
+    ensureDisjoint(userIds, excludedUserIds, "사용자 ID");
+
+    userIds.forEach(userId -> policy.addScope(buildScope(PolicyScopeType.USER, userId, false)));
+    excludedUserIds
+        .forEach(userId -> policy.addScope(buildScope(PolicyScopeType.USER, userId, true)));
 
     return sessionPolicyRepository.save(policy);
   }
@@ -175,11 +177,26 @@ public class PolicyAdminService {
   }
 
   private PolicySummary toSummary(SessionPolicy policy) {
-    Map<PolicyScopeType, List<String>> scopeMap = policy.getScopes().stream()
+    Map<PolicyScopeType, Map<Boolean, List<String>>> scopeMap = policy.getScopes().stream()
         .collect(Collectors.groupingBy(SessionPolicyScope::getScopeType,
-            Collectors.mapping(SessionPolicyScope::getScopeValue,
-                Collectors.collectingAndThen(Collectors.toCollection(LinkedHashSet::new),
-                    list -> list.stream().toList()))));
+            Collectors.groupingBy(SessionPolicyScope::isExcluded,
+                Collectors.mapping(SessionPolicyScope::getScopeValue,
+                    Collectors.collectingAndThen(
+                        Collectors.toCollection(LinkedHashSet::new),
+                        list -> list.stream().toList())))));
+    List<String> tenantIncludes = scopeMap.getOrDefault(PolicyScopeType.TENANT, Map.of())
+        .getOrDefault(false, List.of());
+    List<String> tenantExcludes = scopeMap.getOrDefault(PolicyScopeType.TENANT, Map.of())
+        .getOrDefault(true, List.of());
+    List<String> groupIncludes = scopeMap.getOrDefault(PolicyScopeType.GROUP, Map.of())
+        .getOrDefault(false, List.of());
+    List<String> groupExcludes = scopeMap.getOrDefault(PolicyScopeType.GROUP, Map.of())
+        .getOrDefault(true, List.of());
+    List<String> userIncludes = scopeMap.getOrDefault(PolicyScopeType.USER, Map.of())
+        .getOrDefault(false, List.of());
+    List<String> userExcludes = scopeMap.getOrDefault(PolicyScopeType.USER, Map.of())
+        .getOrDefault(true, List.of());
+
     return new PolicySummary(
         policy.getId(),
         policy.getName(),
@@ -188,9 +205,12 @@ public class PolicyAdminService {
         policy.getEffect(),
         policy.getPriority(),
         policy.isActive(),
-        scopeMap.getOrDefault(PolicyScopeType.TENANT, List.of()),
-        scopeMap.getOrDefault(PolicyScopeType.GROUP, List.of()),
-        scopeMap.getOrDefault(PolicyScopeType.USER, List.of())
+        tenantIncludes,
+        tenantExcludes,
+        groupIncludes,
+        groupExcludes,
+        userIncludes,
+        userExcludes
     );
   }
 
@@ -246,6 +266,26 @@ public class PolicyAdminService {
       return LocalTime.parse(value.trim());
     } catch (Exception ex) {
       throw new IllegalArgumentException("시간 형식이 올바르지 않습니다. (예: 13:30)");
+    }
+  }
+
+  private SessionPolicyScope buildScope(PolicyScopeType type, String value, boolean excluded) {
+    SessionPolicyScope scope = new SessionPolicyScope();
+    scope.setScopeType(type);
+    scope.setScopeValue(value);
+    scope.setExcluded(excluded);
+    return scope;
+  }
+
+  private void ensureDisjoint(Set<String> includes, Set<String> excludes, String label) {
+    if (includes.isEmpty() || excludes.isEmpty()) {
+      return;
+    }
+    Set<String> intersection = includes.stream()
+        .filter(excludes::contains)
+        .collect(Collectors.toSet());
+    if (!intersection.isEmpty()) {
+      throw new IllegalArgumentException(label + " 제외 대상은 포함 대상과 겹칠 수 없습니다.");
     }
   }
 

@@ -13,6 +13,8 @@ import multitenant.security.policy.domain.PolicyEffect;
 import multitenant.security.policy.filter.SessionPolicyFilter;
 import multitenant.security.securitylevel.SecurityLevelState;
 import multitenant.security.securitylevel.service.SecurityLevelService;
+import multitenant.security.sessionlimit.domain.TenantSessionLimit;
+import multitenant.security.sessionlimit.service.TenantSessionLimitService;
 import org.springframework.stereotype.Controller;
 import org.springframework.ui.Model;
 import org.springframework.util.StringUtils;
@@ -29,11 +31,14 @@ public class PolicyAdminController {
 
   private final PolicyAdminService policyAdminService;
   private final SecurityLevelService securityLevelService;
+  private final TenantSessionLimitService tenantSessionLimitService;
 
   public PolicyAdminController(PolicyAdminService policyAdminService,
-      SecurityLevelService securityLevelService) {
+      SecurityLevelService securityLevelService,
+      TenantSessionLimitService tenantSessionLimitService) {
     this.policyAdminService = policyAdminService;
     this.securityLevelService = securityLevelService;
+    this.tenantSessionLimitService = tenantSessionLimitService;
   }
 
   @GetMapping
@@ -136,6 +141,25 @@ public class PolicyAdminController {
     return "redirect:/admin/policies";
   }
 
+  @PostMapping("/limits")
+  public String upsertSessionLimit(@ModelAttribute TenantSessionLimitForm limitForm,
+      RedirectAttributes redirectAttributes) {
+    try {
+      int maxSessions = limitForm.getMaxSessions() == null ? 0 : limitForm.getMaxSessions();
+      int maxIdleSeconds = limitForm.getMaxIdleSeconds() == null ? 0 : limitForm.getMaxIdleSeconds();
+      int maxDurationSeconds =
+          limitForm.getMaxDurationSeconds() == null ? 0 : limitForm.getMaxDurationSeconds();
+      TenantSessionLimit saved = tenantSessionLimitService
+          .upsert(limitForm.getTenantId(), maxSessions, maxIdleSeconds, maxDurationSeconds);
+      redirectAttributes.addFlashAttribute("successMessage",
+          String.format("테넌트 %s 세션 제한이 저장되었습니다.", saved.getTenantId()));
+    } catch (IllegalArgumentException ex) {
+      redirectAttributes.addFlashAttribute("errorMessage", ex.getMessage());
+      redirectAttributes.addFlashAttribute("sessionLimitForm", limitForm);
+    }
+    return "redirect:/admin/policies";
+  }
+
   private void prepareBaseModel(Model model, HttpServletRequest request) {
     if (!model.containsAttribute("policyForm")) {
       model.addAttribute("policyForm", new PolicyCreationForm());
@@ -170,6 +194,14 @@ public class PolicyAdminController {
     model.addAttribute("zoneId", ZoneId.systemDefault().getId());
     enrichSessionAttributes(model, request.getSession(false));
     populateSecurityLevel(model, form);
+    if (!model.containsAttribute("sessionLimitForm")) {
+      TenantSessionLimitForm limitForm = new TenantSessionLimitForm();
+      if (form != null) {
+        limitForm.setTenantId(form.getTenantId());
+      }
+      model.addAttribute("sessionLimitForm", limitForm);
+    }
+    model.addAttribute("tenantSessionLimits", tenantSessionLimitService.findAll());
   }
 
   private void enrichSessionAttributes(Model model, HttpSession session) {

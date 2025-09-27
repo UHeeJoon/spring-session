@@ -31,6 +31,9 @@ public class SessionPolicyScope {
   @Column(name = "scope_value", nullable = false, length = 256)
   private String scopeValue;
 
+  @Column(name = "excluded", nullable = false)
+  private boolean excluded = false;
+
   public Long getId() {
     return id;
   }
@@ -57,5 +60,13 @@ public class SessionPolicyScope {
 
   public void setScopeValue(String scopeValue) {
     this.scopeValue = scopeValue;
+  }
+
+  public boolean isExcluded() {
+    return excluded;
+  }
+
+  public void setExcluded(boolean excluded) {
+    this.excluded = excluded;
   }
 }

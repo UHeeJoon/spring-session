@@ -36,12 +36,18 @@ src/test/java/multitenant/security/
 - `SessionPolicyFilter`: 모든 인증된 요청마다 정책 및 보안 레벨을 확인하고, 세션에 `sessionPolicy:lastAppliedId`, `sessionPolicy:lastEffect`, `sessionSecurity:level`을 기록합니다.
 - `SecurityLevelService`: 사용자 행동 이벤트를 저장하고 `security.level.policies` 설정에 따라 LOW/MEDIUM/HIGH 등급과 TTL을 계산합니다.
 - `PolicyAdminController`: 정책 CRUD, 평가 시뮬레이션, 보안 이벤트 등록을 제공하는 Thymeleaf 기반 관리자 화면입니다.
+- `TenantSessionLimitService`: 테넌트별 최대 세션 수, 세션 유휴 시간, 세션 최대 유지 시간을 저장/적용합니다.
+- 세션 정책은 그룹/사용자 포함 대상과 더불어 제외 대상을 설정해 특정 조건에서 정책을 무시하도록 구성할 수 있습니다.
 - `SecurityConfig`: WebAuthn + 폼 로그인을 구성하고, `alice`, `bob`, `admin` 기본 계정을 제공합니다.
 
 ## 초기 데이터
 `src/main/resources/data.sql`은 프로젝트 기동 시 아래와 같은 샘플 정책을 자동으로 적재합니다.
 - tenant1: 업무 시간 허용/야간 차단, 공인 IP 범위 허용, 특정 국가 차단
 - tenant2: 업무 시간 허용, 특정 사용자 + 국가 조합 차단
+
+`tenant_session_limit` 테이블은 테넌트별 세션 정책을 아래와 같이 초기화합니다.
+- tenant1: 최대 동시 세션 3개, 유휴 제한 1200초, 최대 유지 7200초
+- tenant2: 최대 동시 세션 2개, 유휴 제한 900초, 최대 유지 3600초
 
 ## 실행 전 준비
 1. JDK 24 이상과 Docker(Compose v2)를 설치합니다.
@@ -70,6 +76,8 @@ docker compose up -d
 - "정책 평가" 섹션은 임의의 세션 컨텍스트/요청 시각을 입력해 `SessionPolicyService` 평가 결과(허용/거부, 적용된 정책 ID)를 확인합니다.
 - "세션 컨텍스트 시뮬레이션" 버튼은 현재 브라우저 세션에 입력값을 저장해 이후 요청에서 `SessionPolicyFilter`가 동일한 값을 활용하도록 합니다.
 - "보안 레벨 이벤트 기록" 폼에서 `LOGIN_FAILURE`, `PASSWORD_RESET`, `SUSPICIOUS_IP` 등 행동 유형을 등록하면 `SecurityLevelService`가 이벤트를 축적하고 등급/점수를 재계산합니다.
+- "테넌트 세션 제한" 섹션은 최대 세션 수, 세션 유휴 시간(초), 최대 유지 시간(초)을 테넌트별로 저장하며 0 입력 시 해당 제한을 해제합니다.
+- 정책 생성 폼에서는 `제외 그룹`, `제외 사용자`를 별도로 입력해 포함 대상과 겹치지 않는 범위에서 정책을 무시할 대상(화이트리스트)을 정의할 수 있습니다.
 
 ## API 기반 세션 시뮬레이션
 관리 화면 외에도 간단한 테스트용 엔드포인트(`/session/mock`)가 제공됩니다. 예시는 아래와 같습니다.

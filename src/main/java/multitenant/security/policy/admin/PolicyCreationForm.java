@@ -19,6 +19,8 @@ public class PolicyCreationForm implements Serializable {
   private String countries;
   private String groupIds;
   private String userIds;
+  private String excludedGroupIds;
+  private String excludedUserIds;
 
   public String getName() {
     return name;
@@ -122,5 +124,21 @@ public class PolicyCreationForm implements Serializable {
 
   public void setUserIds(String userIds) {
     this.userIds = userIds;
+  }
+
+  public String getExcludedGroupIds() {
+    return excludedGroupIds;
+  }
+
+  public void setExcludedGroupIds(String excludedGroupIds) {
+    this.excludedGroupIds = excludedGroupIds;
+  }
+
+  public String getExcludedUserIds() {
+    return excludedUserIds;
+  }
+
+  public void setExcludedUserIds(String excludedUserIds) {
+    this.excludedUserIds = excludedUserIds;
   }
 }

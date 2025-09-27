@@ -7,13 +7,18 @@ values
   (5, 'tenant2 office allow', 'TIME_WINDOW', '{"start":"08:00","end":"18:00","zone":"UTC"}', 'ALLOW', 90, true),
   (6, 'tenant2 blacklist user', 'LOCATION', '{"countries":["KR"]}', 'DENY', 140, true);
 
-insert into session_policy_scope (id, scope_type, scope_value, policy_id)
+insert into session_policy_scope (id, scope_type, scope_value, policy_id, excluded)
 values
-  (1, 'TENANT', 'tenant1', 1),
-  (2, 'TENANT', 'tenant1', 2),
-  (3, 'TENANT', 'tenant1', 3),
-  (4, 'GROUP', 'engineering', 3),
-  (5, 'TENANT', 'tenant1', 4),
-  (6, 'TENANT', 'tenant2', 5),
-  (7, 'TENANT', 'tenant2', 6),
-  (8, 'USER', 'blacklist-user', 6);
+  (1, 'TENANT', 'tenant1', 1, false),
+  (2, 'TENANT', 'tenant1', 2, false),
+  (3, 'TENANT', 'tenant1', 3, false),
+  (4, 'GROUP', 'engineering', 3, false),
+  (5, 'TENANT', 'tenant1', 4, false),
+  (6, 'TENANT', 'tenant2', 5, false),
+  (7, 'TENANT', 'tenant2', 6, false),
+  (8, 'USER', 'blacklist-user', 6, false);
+
+insert into tenant_session_limit (tenant_id, max_sessions, max_idle_seconds, max_duration_seconds)
+values
+  ('tenant1', 3, 1200, 7200),
+  ('tenant2', 2, 900, 3600);

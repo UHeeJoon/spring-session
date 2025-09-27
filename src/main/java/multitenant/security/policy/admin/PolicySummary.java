@@ -13,7 +13,10 @@ public record PolicySummary(
     int priority,
     boolean active,
     List<String> tenantIds,
+    List<String> excludedTenantIds,
     List<String> groupIds,
-    List<String> userIds
+    List<String> excludedGroupIds,
+    List<String> userIds,
+    List<String> excludedUserIds
 ) {
 }

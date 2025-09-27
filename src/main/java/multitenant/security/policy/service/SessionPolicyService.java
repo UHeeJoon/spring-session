@@ -53,7 +53,7 @@ public class SessionPolicyService {
   }
 
   private boolean scopeMatches(SessionPolicy policy, PolicyEvaluationContext context) {
-    Set<String> tenantScopes = collectScopeValues(policy, PolicyScopeType.TENANT);
+    Set<String> tenantScopes = collectScopeValues(policy, PolicyScopeType.TENANT, false);
     if (tenantScopes.isEmpty() || context.tenantId() == null) {
       return false;
     }
@@ -61,25 +61,41 @@ public class SessionPolicyService {
       return false;
     }
 
-    Set<String> userScopes = collectScopeValues(policy, PolicyScopeType.USER);
+    Set<String> excludedTenants = collectScopeValues(policy, PolicyScopeType.TENANT, true);
+    if (!excludedTenants.isEmpty() && excludedTenants.contains(context.tenantId())) {
+      return false;
+    }
+
+    Set<String> userScopes = collectScopeValues(policy, PolicyScopeType.USER, false);
     if (!userScopes.isEmpty()) {
       if (!context.hasUser() || !userScopes.contains(context.userId())) {
         return false;
       }
     }
 
-    Set<String> groupScopes = collectScopeValues(policy, PolicyScopeType.GROUP);
+    Set<String> excludedUsers = collectScopeValues(policy, PolicyScopeType.USER, true);
+    if (!excludedUsers.isEmpty() && context.hasUser() && excludedUsers.contains(context.userId())) {
+      return false;
+    }
+
+    Set<String> groupScopes = collectScopeValues(policy, PolicyScopeType.GROUP, false);
     if (!groupScopes.isEmpty()) {
       if (!context.hasGroups() || context.groupIds().stream().noneMatch(groupScopes::contains)) {
         return false;
       }
     }
+    Set<String> excludedGroups = collectScopeValues(policy, PolicyScopeType.GROUP, true);
+    if (!excludedGroups.isEmpty() && context.hasGroups()
+        && context.groupIds().stream().anyMatch(excludedGroups::contains)) {
+      return false;
+    }
     return true;
   }
 
-  private Set<String> collectScopeValues(SessionPolicy policy, PolicyScopeType scopeType) {
+  private Set<String> collectScopeValues(SessionPolicy policy, PolicyScopeType scopeType,
+      boolean excluded) {
     return policy.getScopes().stream()
-        .filter(scope -> scope.getScopeType() == scopeType)
+        .filter(scope -> scope.getScopeType() == scopeType && scope.isExcluded() == excluded)
         .map(SessionPolicyScope::getScopeValue)
         .collect(Collectors.toSet());
   }

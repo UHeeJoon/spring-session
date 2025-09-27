@@ -20,6 +20,8 @@ import multitenant.security.policy.service.PolicyEvaluationResult;
 import multitenant.security.securitylevel.SecurityLevel;
 import multitenant.security.securitylevel.SecurityLevelState;
 import multitenant.security.securitylevel.service.SecurityLevelService;
+import multitenant.security.sessionlimit.domain.TenantSessionLimit;
+import multitenant.security.sessionlimit.service.TenantSessionLimitService;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -45,6 +47,9 @@ class PolicyAdminControllerTests {
   @MockitoBean
   private multitenant.security.policy.service.SessionPolicyService sessionPolicyService;
 
+  @MockitoBean
+  private TenantSessionLimitService tenantSessionLimitService;
+
   private List<PolicySummary> samplePolicies;
 
   @BeforeEach
@@ -52,7 +57,7 @@ class PolicyAdminControllerTests {
     samplePolicies = List.of(
         new PolicySummary(1L, "allow business", PolicyConditionType.TIME_WINDOW,
             "{\"start\":\"09:00\",\"end\":\"18:00\"}", PolicyEffect.ALLOW, 100, true,
-            List.of("tenant1"), List.of("engineering"), List.of())
+            List.of("tenant1"), List.of(), List.of("engineering"), List.of(), List.of(), List.of())
     );
 
     given(policyAdminService.findAllPolicies()).willReturn(samplePolicies);
@@ -62,6 +67,9 @@ class PolicyAdminControllerTests {
     given(policyAdminService.createPolicy(any(PolicyCreationForm.class)))
         .willReturn(new multitenant.security.policy.domain.SessionPolicy());
     given(sessionPolicyService.evaluate(any())).willReturn(PolicyEvaluationResult.allow(null));
+    given(tenantSessionLimitService.findAll()).willReturn(List.of(
+        new TenantSessionLimit("tenant1", 2, 600, 3600)
+    ));
   }
 
   @Test
@@ -106,5 +114,19 @@ class PolicyAdminControllerTests {
 
     verify(securityLevelService).registerAction(eq("tenantX"), eq("userY"), eq("LOGIN_FAILURE"),
         org.mockito.ArgumentMatchers.isNull());
+  }
+
+  @Test
+  void saveSessionLimitInvokesService() throws Exception {
+    mockMvc.perform(post("/admin/policies/limits")
+            .param("tenantId", "tenantZ")
+            .param("maxSessions", "2")
+            .param("maxIdleSeconds", "900")
+            .param("maxDurationSeconds", "3600")
+            .with(SecurityMockMvcRequestPostProcessors.csrf()))
+        .andExpect(status().is3xxRedirection())
+        .andExpect(redirectedUrl("/admin/policies"));
+
+    verify(tenantSessionLimitService).upsert("tenantZ", 2, 900, 3600);
   }
 }

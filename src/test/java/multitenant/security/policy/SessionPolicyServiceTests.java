@@ -135,6 +135,43 @@ class SessionPolicyServiceTests {
     assertThat(result.effect()).isEqualTo(PolicyEffect.ALLOW);
   }
 
+  @Test
+  void skipsPolicyWhenUserIsExplicitlyExcluded() {
+    SessionPolicy denyEngineering = createPolicy("tenant1", PolicyEffect.DENY,
+        multitenant.security.policy.domain.PolicyConditionType.TIME_WINDOW,
+        "{\"start\":\"00:00\",\"end\":\"23:59\",\"zone\":\"Asia/Seoul\"}", 150,
+        scopes(tenant("tenant1"), group("engineering")));
+    SessionPolicyScope excludedAlice = user("alice");
+    excludedAlice.setExcluded(true);
+    denyEngineering.addScope(excludedAlice);
+    sessionPolicyRepository.save(denyEngineering);
+
+    PolicyEvaluationContext aliceContext = new PolicyEvaluationContext(
+        "tenant1",
+        "alice",
+        Set.of("engineering"),
+        "10.0.0.20",
+        "KR",
+        ZonedDateTime.of(2024, 1, 5, 10, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+    );
+
+    PolicyEvaluationResult aliceResult = sessionPolicyService.evaluate(aliceContext);
+    assertThat(aliceResult.allowed()).isTrue();
+
+    PolicyEvaluationContext bobContext = new PolicyEvaluationContext(
+        "tenant1",
+        "bob",
+        Set.of("engineering"),
+        "10.0.0.30",
+        "KR",
+        ZonedDateTime.of(2024, 1, 5, 10, 0, 0, 0, ZoneId.of("Asia/Seoul"))
+    );
+
+    PolicyEvaluationResult bobResult = sessionPolicyService.evaluate(bobContext);
+    assertThat(bobResult.allowed()).isFalse();
+    assertThat(bobResult.effect()).isEqualTo(PolicyEffect.DENY);
+  }
+
   private SessionPolicy createPolicy(String tenantId, PolicyEffect effect,
       multitenant.security.policy.domain.PolicyConditionType conditionType,
       String conditionValue, int priority, Set<SessionPolicyScope> scopes) {

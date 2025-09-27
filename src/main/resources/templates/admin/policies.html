@@ -66,7 +66,9 @@
       <th>활성</th>
       <th>테넌트</th>
       <th>그룹</th>
+      <th>제외 그룹</th>
       <th>사용자</th>
+      <th>제외 사용자</th>
       <th>조건 타입</th>
       <th>조건 값(JSON)</th>
       <th>동작</th>
@@ -74,7 +76,7 @@
     </thead>
     <tbody>
     <tr th:if="${policies.empty}">
-      <td colspan="10">등록된 정책이 없습니다.</td>
+      <td colspan="13">등록된 정책이 없습니다.</td>
     </tr>
     <tr th:each="policy : ${policies}">
       <td th:text="${policy.id()}"></td>
@@ -92,7 +94,13 @@
         <span th:each="g : ${policy.groupIds()}" class="badge" th:text="${g}"></span>
       </td>
       <td>
+        <span th:each="g : ${policy.excludedGroupIds()}" class="badge deny" th:text="${g}"></span>
+      </td>
+      <td>
         <span th:each="u : ${policy.userIds()}" class="badge" th:text="${u}"></span>
+      </td>
+      <td>
+        <span th:each="u : ${policy.excludedUserIds()}" class="badge deny" th:text="${u}"></span>
       </td>
       <td th:text="${policy.conditionType().name()}"></td>
       <td><pre th:text="${policy.conditionValue()}"></pre></td>
@@ -176,6 +184,14 @@
       <label>대상 사용자 ID (쉼표 구분)
         <input type="text" th:field="*{userIds}" placeholder="alice,bob" />
       </label>
+      <label>제외 그룹 ID (쉼표 구분)
+        <input type="text" th:field="*{excludedGroupIds}" placeholder="contractor" />
+        <span class="small">포함 대상과 겹칠 수 없습니다.</span>
+      </label>
+      <label>제외 사용자 ID (쉼표 구분)
+        <input type="text" th:field="*{excludedUserIds}" placeholder="temp-user" />
+        <span class="small">포함 사용자와 중복될 수 없습니다.</span>
+      </label>
     </div>
 
     <div style="margin-top:16px;">
@@ -254,6 +270,56 @@
     <div class="inline" style="margin-top:16px;">
       <button type="submit">세션 저장</button>
       <span class="small">세션 저장 후 <code>/</code> 엔드포인트를 호출하면 정책 필터가 적용된 요청을 확인할 수 있습니다.</span>
+    </div>
+  </form>
+</section>
+
+<section>
+  <h2>테넌트 세션 제한</h2>
+  <div class="card info">
+    <p class="small">최대 동시 세션 수, 세션 유휴 시간(초), 세션 최대 유지 시간(초)을 테넌트별로 관리합니다. 값이 0이면 제한을 적용하지 않습니다.</p>
+  </div>
+
+  <table>
+    <thead>
+    <tr>
+      <th>테넌트</th>
+      <th>최대 세션 수</th>
+      <th>유휴 제한(초)</th>
+      <th>최대 유지(초)</th>
+    </tr>
+    </thead>
+    <tbody>
+    <tr th:if="${tenantSessionLimits.empty}">
+      <td colspan="4">등록된 세션 제한 정보가 없습니다.</td>
+    </tr>
+    <tr th:each="limit : ${tenantSessionLimits}">
+      <td th:text="${limit.tenantId}"></td>
+      <td th:text="${limit.maxSessions}"></td>
+      <td th:text="${limit.maxIdleSeconds}"></td>
+      <td th:text="${limit.maxDurationSeconds}"></td>
+    </tr>
+    </tbody>
+  </table>
+
+  <form class="card" th:action="@{/admin/policies/limits}" th:object="${sessionLimitForm}" method="post" style="margin-top:16px;">
+    <input type="hidden" th:name="${_csrf.parameterName}" th:value="${_csrf.token}" />
+    <div class="form-grid">
+      <label>테넌트 ID
+        <input type="text" th:field="*{tenantId}" placeholder="tenant1" required />
+      </label>
+      <label>최대 세션 수
+        <input type="number" th:field="*{maxSessions}" min="0" placeholder="0" />
+      </label>
+      <label>세션 유휴 시간(초)
+        <input type="number" th:field="*{maxIdleSeconds}" min="0" placeholder="1800" />
+      </label>
+      <label>세션 최대 유지 시간(초)
+        <input type="number" th:field="*{maxDurationSeconds}" min="0" placeholder="0" />
+      </label>
+    </div>
+    <div style="margin-top:12px;">
+      <button type="submit">세션 제한 저장</button>
     </div>
   </form>
 </section>
