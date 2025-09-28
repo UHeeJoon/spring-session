@@ -1,29 +1,39 @@
 package multitenant.security.policy.repository;
 
-import java.util.LinkedHashSet;
 import java.util.List;
-import java.util.Set;
 import multitenant.security.policy.domain.PolicyScopeType;
 import multitenant.security.policy.domain.SessionPolicy;
-import org.springframework.data.jpa.repository.EntityGraph;
+import org.springframework.data.jpa.repository.Query;
+import org.springframework.data.repository.query.Param;
 import org.springframework.data.jpa.repository.JpaRepository;
 
 public interface SessionPolicyRepository extends JpaRepository<SessionPolicy, Long> {
 
-  @EntityGraph(attributePaths = "scopes")
-  List<SessionPolicy> findByActiveTrueAndScopesScopeTypeAndScopesScopeValueOrderByPriorityDesc(
-      PolicyScopeType scopeType, String scopeValue);
+  @Query("""
+      select distinct p from SessionPolicy p
+        left join fetch p.scopes s
+      where p.active = true
+        and exists (
+          select 1 from SessionPolicyScope ts
+          where ts.policy = p
+            and ts.scopeType = :tenantScope
+            and ts.scopeValue = :tenantId
+            and ts.excluded = false
+        )
+      order by p.priority desc, p.id desc
+      """)
+  List<SessionPolicy> findActiveForTenantWithScopes(
+      @Param("tenantId") String tenantId,
+      @Param("tenantScope") PolicyScopeType tenantScope);
 
-  @EntityGraph(attributePaths = "scopes")
-  List<SessionPolicy> findAllByOrderByPriorityDesc();
+  @Query("""
+      select distinct p from SessionPolicy p
+        left join fetch p.scopes s
+      order by p.priority desc, p.id desc
+      """)
+  List<SessionPolicy> findAllWithScopes();
 
   default List<SessionPolicy> findActiveForTenant(String tenantId) {
-    List<SessionPolicy> policies =
-        findByActiveTrueAndScopesScopeTypeAndScopesScopeValueOrderByPriorityDesc(
-            PolicyScopeType.TENANT, tenantId);
-    Set<SessionPolicy> distinct = new LinkedHashSet<>(policies);
-    return distinct.stream()
-        .sorted((a, b) -> Integer.compare(b.getPriority(), a.getPriority()))
-        .toList();
+    return findActiveForTenantWithScopes(tenantId, PolicyScopeType.TENANT);
   }
 }

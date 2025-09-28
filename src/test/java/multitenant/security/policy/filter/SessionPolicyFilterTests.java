@@ -69,6 +69,7 @@ class SessionPolicyFilterTests {
         .willReturn(Map.of());
 
     MockHttpSession session = new MockHttpSession();
+    String originalId = session.getId();
     session.setAttribute("tenantId", "tenant1");
     session.setAttribute("userId", "alice");
 
@@ -80,6 +81,7 @@ class SessionPolicyFilterTests {
     filter.doFilter(request, response, chain);
 
     assertThat(session.getMaxInactiveInterval()).isEqualTo(300);
+    assertThat(session.getId()).isNotEqualTo(originalId);
     verify(sessionRepository, never()).findByIndexNameAndIndexValue(anyString(), anyString());
   }
 
@@ -112,15 +114,18 @@ class SessionPolicyFilterTests {
         .willReturn(Map.of());
 
     MockHttpSession session = new MockHttpSession();
+    String originalId = session.getId();
     session.setAttribute("tenantId", "tenant1");
     session.setAttribute("userId", "alice");
 
     MockHttpServletRequest request = new MockHttpServletRequest();
     request.setSession(session);
+    MockHttpServletResponse response = new MockHttpServletResponse();
 
-    filter.doFilter(request, new MockHttpServletResponse(), new MockFilterChain());
+    filter.doFilter(request, response, new MockFilterChain());
 
     assertThat(session.getMaxInactiveInterval()).isEqualTo(-1);
+    assertThat(session.getId()).isNotEqualTo(originalId);
   }
 
   @Test
@@ -142,6 +147,7 @@ class SessionPolicyFilterTests {
         ));
 
     MockHttpSession session = new MockHttpSession();
+    String originalId = session.getId();
     session.setAttribute("tenantId", "tenant1");
     session.setAttribute("userId", "alice");
 
@@ -156,6 +162,7 @@ class SessionPolicyFilterTests {
     verify(sessionRepository).deleteById("old-1");
     verify(sessionRepository).deleteById("old-2");
     verify(sessionRepository, never()).deleteById(session.getId());
+    assertThat(session.getId()).isNotEqualTo(originalId);
   }
 
   private static class MutableCreationTimeSession extends MockHttpSession {

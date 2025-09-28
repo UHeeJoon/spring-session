@@ -37,6 +37,8 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
   public static final String SESSION_POLICY_ID_ATTR = "sessionPolicy:lastAppliedId";
   public static final String SESSION_POLICY_EFFECT_ATTR = "sessionPolicy:lastEffect";
   public static final String SESSION_SECURITY_LEVEL_ATTR = "sessionSecurity:level";
+  private static final String REQUEST_ROTATED_ATTR =
+      SessionPolicyFilter.class.getName() + ".rotated";
 
   private final SessionPolicyService sessionPolicyService;
   private final SecurityLevelService securityLevelService;
@@ -61,6 +63,7 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
       FilterChain filterChain) throws ServletException, IOException {
     HttpSession session = request.getSession(false);
     if (session != null) {
+      rotateSessionId(request, session);
       PolicyEvaluationContext context = buildContext(request, session);
       PolicyEvaluationResult result = sessionPolicyService.evaluate(context);
       session.setAttribute(SESSION_POLICY_ID_ATTR, result.policyId());
@@ -180,6 +183,14 @@ public class SessionPolicyFilter extends OncePerRequestFilter {
       session.invalidate();
       throw new AccessDeniedException("Maximum session count exceeded");
     }
+  }
+
+  private void rotateSessionId(HttpServletRequest request, HttpSession session) {
+    if (request.getAttribute(REQUEST_ROTATED_ATTR) != null) {
+      return;
+    }
+    request.setAttribute(REQUEST_ROTATED_ATTR, Boolean.TRUE);
+    request.changeSessionId();
   }
 
   private String resolveClientIp(HttpServletRequest request) {

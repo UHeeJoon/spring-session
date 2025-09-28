@@ -92,7 +92,7 @@ public class PolicyAdminService {
 
   @Transactional(readOnly = true)
   public List<PolicySummary> findAllPolicies() {
-    return sessionPolicyRepository.findAllByOrderByPriorityDesc().stream()
+    return sessionPolicyRepository.findAllWithScopes().stream()
         .map(this::toSummary)
         .sorted(Comparator.comparingInt(PolicySummary::priority).reversed()
             .thenComparingLong(PolicySummary::id))

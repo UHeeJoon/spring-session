@@ -57,7 +57,7 @@ class PolicyAdminServiceTests {
     assertThat(policy.getId()).isNotNull();
     assertThat(policy.getScopes()).hasSizeGreaterThanOrEqualTo(1);
     List<SessionPolicy> tenantPolicies =
-        sessionPolicyRepository.findAllByOrderByPriorityDesc().stream()
+        sessionPolicyRepository.findAllWithScopes().stream()
             .filter(p -> p.getScopes().stream()
                 .anyMatch(scope -> "tenant3".equals(scope.getScopeValue())))
             .toList();
